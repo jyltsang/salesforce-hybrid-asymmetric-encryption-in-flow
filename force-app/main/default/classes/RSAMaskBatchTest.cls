@@ -55,7 +55,7 @@ private class RSAMaskBatchTest {
         System.assertEquals(true, after.HasOptedOutOfEmail);
         System.assert(after.Description.contains('::'), 'Log should hold RSA key and AES cipher text');
         // Original values must not reach the log in plain text. The email and street contain
-        // '@' and spaces, which hex and base64 never produce, so these checks cannot pass by chance
+        // '@' and spaces, which hex and base64 never produce, so ciphertext can never match them by chance
         System.assert(!after.Description.contains('Smith'), 'Log must not hold the plain last name');
         System.assert(!after.Description.contains('john@example.com'), 'Log must not hold the plain email');
         System.assert(!after.Description.contains('1 High Street'), 'Log must not hold the plain street');
