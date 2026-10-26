@@ -9,6 +9,8 @@ public with sharing class FlowRSADataMaskingAction {
         public String encryptedLogFieldName;
         @InvocableVariable(required=true label='Checkbox Field' description='API Name of the status checkbox field')
         public String statusCheckboxFieldName;
+        @InvocableVariable(label='Batch Size' description='Optional. Records per batch transaction, 1 to 200 (default 1)')
+        public Integer batchSize;
     }
 
     public class MaskResult {
@@ -16,8 +18,19 @@ public with sharing class FlowRSADataMaskingAction {
         @InvocableVariable(label='Message') public String message;
     }
 
-    // Flow entry point: validates, then hands off to an async batch (one record per transaction)
-    @InvocableMethod(label='Asymmetrical RSA Masking (Async)' description='Queues RSA hybrid masking; one record per batch scope.')
+    // Compound address names (lower case) mapped to their component fields
+    private static final Map<String, List<String>> COMPOUND_ADDRESSES = new Map<String, List<String>>{
+        'mailingaddress'  => new List<String>{'MailingStreet', 'MailingCity', 'MailingState', 'MailingPostalCode', 'MailingCountry'},
+        'otheraddress'    => new List<String>{'OtherStreet', 'OtherCity', 'OtherState', 'OtherPostalCode', 'OtherCountry'},
+        'billingaddress'  => new List<String>{'BillingStreet', 'BillingCity', 'BillingState', 'BillingPostalCode', 'BillingCountry'},
+        'shippingaddress' => new List<String>{'ShippingStreet', 'ShippingCity', 'ShippingState', 'ShippingPostalCode', 'ShippingCountry'}
+    };
+
+    private static final Integer DEFAULT_BATCH_SIZE = 1;
+    private static final Integer MAX_BATCH_SIZE = 200;
+
+    // Flow entry point: validates, then hands off to an async batch (one record per transaction by default)
+    @InvocableMethod(label='Asymmetrical RSA Masking (Async)' description='Queues RSA hybrid masking; one record per batch scope unless Batch Size is set.')
     public static List<MaskResult> processRecords(List<MaskRequest> requests) {
         List<MaskResult> results = new List<MaskResult>();
         for (MaskRequest req : requests) {
@@ -26,21 +39,33 @@ public with sharing class FlowRSADataMaskingAction {
                 if (req == null || req.recordsToMask == null || req.recordsToMask.isEmpty()) {
                     res.isSuccess = false;
                     res.message = 'ERROR: The record collection is empty.';
+                } else if (String.isBlank(req.encryptedLogFieldName) || String.isBlank(req.statusCheckboxFieldName)) {
+                    res.isSuccess = false;
+                    res.message = 'ERROR: The log field and checkbox field names are required.';
                 } else {
+                    Schema.SObjectType firstType = req.recordsToMask[0].getSObjectType();
+                    Boolean mixedTypes = false;
                     Set<Id> ids = new Set<Id>();
-                    for (SObject s : req.recordsToMask) { if (s.Id != null) ids.add(s.Id); }
-                    if (ids.isEmpty()) {
+                    for (SObject s : req.recordsToMask) {
+                        if (s.getSObjectType() != firstType) mixedTypes = true;
+                        if (s.Id != null) ids.add(s.Id);
+                    }
+
+                    if (mixedTypes) {
+                        res.isSuccess = false;
+                        res.message = 'ERROR: All records must belong to the same object.';
+                    } else if (ids.isEmpty()) {
                         res.isSuccess = false;
                         res.message = 'ERROR: Provided records must have valid IDs.';
                     } else {
-                        String objectName = req.recordsToMask[0].getSObjectType().getDescribe().getName();
+                        Integer scopeSize = resolveBatchSize(req.batchSize);
                         Id jobId = Database.executeBatch(new RSAMaskBatch(
-                            objectName, new List<Id>(ids),
+                            firstType.getDescribe().getName(), new List<Id>(ids),
                             resolveFieldNames(req.fieldNamesCollection),
                             req.encryptedLogFieldName.trim(),
-                            req.statusCheckboxFieldName.trim()), 1);
+                            req.statusCheckboxFieldName.trim()), scopeSize);
                         res.isSuccess = true;
-                        res.message = 'QUEUED: ' + ids.size() + ' record(s), batch job ' + jobId;
+                        res.message = 'QUEUED: ' + ids.size() + ' record(s), batch size ' + scopeSize + ', batch job ' + jobId;
                     }
                 }
             } catch (Exception e) {
@@ -52,18 +77,26 @@ public with sharing class FlowRSADataMaskingAction {
         return results;
     }
 
+    // Blank means the default; anything outside 1 to 200 is clamped into range
+    @TestVisible
+    private static Integer resolveBatchSize(Integer requested) {
+        if (requested == null) return DEFAULT_BATCH_SIZE;
+        return Math.max(1, Math.min(MAX_BATCH_SIZE, requested));
+    }
+
+    // Expands compound address names, trims, drops blanks and removes duplicates (case-insensitive)
     public static List<String> resolveFieldNames(List<String> fieldNames) {
         List<String> resolved = new List<String>();
         if (fieldNames == null) return resolved;
+
+        Set<String> seen = new Set<String>();
         for (String f : fieldNames) {
             if (String.isBlank(f)) continue;
-            String lower = f.trim().toLowerCase();
-            if (lower == 'mailingaddress') {
-                resolved.addAll(new List<String>{'MailingStreet','MailingCity','MailingState','MailingPostalCode','MailingCountry'});
-            } else if (lower == 'billingaddress') {
-                resolved.addAll(new List<String>{'BillingStreet','BillingCity','BillingState','BillingPostalCode','BillingCountry'});
-            } else {
-                resolved.add(f.trim());
+            String name = f.trim();
+            List<String> expanded = COMPOUND_ADDRESSES.get(name.toLowerCase());
+            List<String> toAdd = (expanded != null) ? expanded : new List<String>{name};
+            for (String n : toAdd) {
+                if (seen.add(n.toLowerCase())) resolved.add(n);
             }
         }
         return resolved;
