@@ -80,7 +80,7 @@ Get the records, put the field API names into a text collection, then add the ac
 | Fields Name | Text collection of field API names (`MailingAddress`, `OtherAddress`, `BillingAddress` and `ShippingAddress` expand to their parts) |
 | Log Field | API name of the rich text log field |
 | Checkbox Field | API name of the status checkbox |
-| Batch Size | Optional, 1 to 200, default 1. Smaller chunks give each record more CPU headroom |
+| Batch Size | Optional, 1 to 200, default 1. Values outside the range are clamped. Smaller chunks give each record more CPU headroom |
 
 Call the action once per collection, not inside a loop.
 

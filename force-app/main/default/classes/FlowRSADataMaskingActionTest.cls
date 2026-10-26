@@ -27,7 +27,37 @@ private class FlowRSADataMaskingActionTest {
         Test.stopTest();
 
         System.assertEquals(true, out[0].isSuccess);
-        System.assert(out[0].message.startsWith('QUEUED: 1 record(s)'));
+        System.assert(out[0].message.startsWith('QUEUED: 1 record(s), batch size 1,'));
+    }
+
+    @IsTest
+    static void passesExplicitBatchSize() {
+        RSAMaskBatch.testConfigs = new List<RSA_Key_Config__mdt>{
+            new RSA_Key_Config__mdt(DeveloperName = 'Default_Key',
+                Modulus__c = 'f'.repeat(512), Exponent__c = '10001')};
+        Contact c = new Contact(LastName = 'Smith');
+        insert c;
+
+        FlowRSADataMaskingAction.MaskRequest r = req(new List<SObject>{c});
+        r.batchSize = 50;
+
+        Test.startTest();
+        FlowRSADataMaskingAction.MaskResult res = run(r)[0];
+        Test.stopTest();
+
+        System.assertEquals(true, res.isSuccess);
+        System.assert(res.message.contains('batch size 50,'));
+    }
+
+    @IsTest
+    static void resolvesBatchSize() {
+        System.assertEquals(1, FlowRSADataMaskingAction.resolveBatchSize(null), 'Blank uses the default');
+        System.assertEquals(1, FlowRSADataMaskingAction.resolveBatchSize(0));
+        System.assertEquals(1, FlowRSADataMaskingAction.resolveBatchSize(-5));
+        System.assertEquals(1, FlowRSADataMaskingAction.resolveBatchSize(1));
+        System.assertEquals(25, FlowRSADataMaskingAction.resolveBatchSize(25));
+        System.assertEquals(200, FlowRSADataMaskingAction.resolveBatchSize(200));
+        System.assertEquals(200, FlowRSADataMaskingAction.resolveBatchSize(5000));
     }
 
     @IsTest

@@ -9,6 +9,8 @@ public with sharing class FlowRSADataMaskingAction {
         public String encryptedLogFieldName;
         @InvocableVariable(required=true label='Checkbox Field' description='API Name of the status checkbox field')
         public String statusCheckboxFieldName;
+        @InvocableVariable(label='Batch Size' description='Optional. Records per batch transaction, 1 to 200 (default 1)')
+        public Integer batchSize;
     }
 
     public class MaskResult {
@@ -24,8 +26,11 @@ public with sharing class FlowRSADataMaskingAction {
         'shippingaddress' => new List<String>{'ShippingStreet', 'ShippingCity', 'ShippingState', 'ShippingPostalCode', 'ShippingCountry'}
     };
 
-    // Flow entry point: validates, then hands off to an async batch (one record per transaction)
-    @InvocableMethod(label='Asymmetrical RSA Masking (Async)' description='Queues RSA hybrid masking; one record per batch scope.')
+    private static final Integer DEFAULT_BATCH_SIZE = 1;
+    private static final Integer MAX_BATCH_SIZE = 200;
+
+    // Flow entry point: validates, then hands off to an async batch (one record per transaction by default)
+    @InvocableMethod(label='Asymmetrical RSA Masking (Async)' description='Queues RSA hybrid masking; one record per batch scope unless Batch Size is set.')
     public static List<MaskResult> processRecords(List<MaskRequest> requests) {
         List<MaskResult> results = new List<MaskResult>();
         for (MaskRequest req : requests) {
@@ -53,13 +58,14 @@ public with sharing class FlowRSADataMaskingAction {
                         res.isSuccess = false;
                         res.message = 'ERROR: Provided records must have valid IDs.';
                     } else {
+                        Integer scopeSize = resolveBatchSize(req.batchSize);
                         Id jobId = Database.executeBatch(new RSAMaskBatch(
                             firstType.getDescribe().getName(), new List<Id>(ids),
                             resolveFieldNames(req.fieldNamesCollection),
                             req.encryptedLogFieldName.trim(),
-                            req.statusCheckboxFieldName.trim()), 1);
+                            req.statusCheckboxFieldName.trim()), scopeSize);
                         res.isSuccess = true;
-                        res.message = 'QUEUED: ' + ids.size() + ' record(s), batch job ' + jobId;
+                        res.message = 'QUEUED: ' + ids.size() + ' record(s), batch size ' + scopeSize + ', batch job ' + jobId;
                     }
                 }
             } catch (Exception e) {
@@ -69,6 +75,13 @@ public with sharing class FlowRSADataMaskingAction {
             results.add(res);
         }
         return results;
+    }
+
+    // Blank means the default; anything outside 1 to 200 is clamped into range
+    @TestVisible
+    private static Integer resolveBatchSize(Integer requested) {
+        if (requested == null) return DEFAULT_BATCH_SIZE;
+        return Math.max(1, Math.min(MAX_BATCH_SIZE, requested));
     }
 
     // Expands compound address names, trims, drops blanks and removes duplicates (case-insensitive)
