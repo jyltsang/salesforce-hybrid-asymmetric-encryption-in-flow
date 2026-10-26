@@ -13,7 +13,7 @@ A follow-up to [salesforce-aes256-data-masking-in-flow](https://github.com/jylts
    - encrypts it with a random AES-256 key,
    - encrypts that AES key with your RSA public key,
    - stores `<RSA hex>::<AES payload base64>` in the log field,
-   - blanks the original fields and ticks the status checkbox.
+   - masks the original fields (see *How fields are masked*) and ticks the status checkbox.
 4. You decrypt off-platform with the private key.
 
 ## Why not AES only?
@@ -29,6 +29,7 @@ A follow-up to [salesforce-aes256-data-masking-in-flow](https://github.com/jylts
 - `FlowRSADataMaskingAction.cls`: invocable action for Flow; validates input and queues the batch
 - `RSAMaskBatch.cls`: masks and encrypts records
 - `BigInt.cls`: big-number maths for RSA (Apex has no native RSA encryption)
+- `BigIntTest.cls`, `RSAMaskBatchTest.cls`, `FlowRSADataMaskingActionTest.cls`: unit tests (Salesforce requires 75% coverage to deploy to production)
 - `decrypt_envelope.py`: offline decryption
 
 ## Setup
@@ -61,7 +62,13 @@ A plain Text field truncates the modulus to 255 characters. The batch checks the
 
 ### 4. Deploy the Apex classes
 
-Deploy `BigInt`, `RSAMaskBatch` and `FlowRSADataMaskingAction`.
+Deploy `BigInt`, `RSAMaskBatch` and `FlowRSADataMaskingAction`, together with the three test classes:
+
+```bash
+sf project deploy start --source-dir force-app --test-level RunLocalTests
+```
+
+The tests use standard Contact fields and inject a dummy key through `RSAMaskBatch.testConfigs`, so they do not depend on your `Default_Key` record. If your org has required custom fields, validation rules or triggers on Contact, add the required values in `RSAMaskBatchTest.makeContact`.
 
 ### 5. Build the Flow
 
@@ -70,14 +77,28 @@ Get the records, put the field API names into a text collection, then add the ac
 | Input | Value |
 |---|---|
 | Object | Record collection |
-| Fields Name | Text collection of field API names (`MailingAddress` and `BillingAddress` expand to their parts) |
+| Fields Name | Text collection of field API names (`MailingAddress`, `OtherAddress`, `BillingAddress` and `ShippingAddress` expand to their parts) |
 | Log Field | API name of the rich text log field |
 | Checkbox Field | API name of the status checkbox |
 | Batch Size | Optional, 1 to 200, default 1. Smaller chunks give each record more CPU headroom |
 
 Call the action once per collection, not inside a loop.
 
-### 6. Check the result
+### 6. How fields are masked
+
+Any field type can be listed. Blank, unknown and duplicate names are skipped rather than failing the job. The log and status fields are never masked, even if listed.
+
+| Field | Replacement |
+|---|---|
+| Nillable (optional) | `null` |
+| Required text, text area, phone | `*****` (cut to the field length if shorter) |
+| Required email / URL | `masked@masked.invalid` / `https://masked.invalid` |
+| Required checkbox, number, currency, percent | `false` / `0` |
+| Required date, date/time, time | 1900-01-01 / 1900-01-01 00:00 / 00:00 |
+| Required picklist, lookup | Left unchanged (no safe placeholder); the record is still flagged |
+| Not updateable, address, geolocation, binary | Skipped |
+
+### 7. Check the result
 
 The action returns `QUEUED`, which only means the job was accepted. Check **Setup → Apex Jobs** for the real outcome. Already masked records are skipped.
 

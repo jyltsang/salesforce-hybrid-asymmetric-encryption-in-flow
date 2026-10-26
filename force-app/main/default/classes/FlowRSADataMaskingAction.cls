@@ -16,6 +16,14 @@ public with sharing class FlowRSADataMaskingAction {
         @InvocableVariable(label='Message') public String message;
     }
 
+    // Compound address names (lower case) mapped to their component fields
+    private static final Map<String, List<String>> COMPOUND_ADDRESSES = new Map<String, List<String>>{
+        'mailingaddress'  => new List<String>{'MailingStreet', 'MailingCity', 'MailingState', 'MailingPostalCode', 'MailingCountry'},
+        'otheraddress'    => new List<String>{'OtherStreet', 'OtherCity', 'OtherState', 'OtherPostalCode', 'OtherCountry'},
+        'billingaddress'  => new List<String>{'BillingStreet', 'BillingCity', 'BillingState', 'BillingPostalCode', 'BillingCountry'},
+        'shippingaddress' => new List<String>{'ShippingStreet', 'ShippingCity', 'ShippingState', 'ShippingPostalCode', 'ShippingCountry'}
+    };
+
     // Flow entry point: validates, then hands off to an async batch (one record per transaction)
     @InvocableMethod(label='Asymmetrical RSA Masking (Async)' description='Queues RSA hybrid masking; one record per batch scope.')
     public static List<MaskResult> processRecords(List<MaskRequest> requests) {
@@ -26,16 +34,27 @@ public with sharing class FlowRSADataMaskingAction {
                 if (req == null || req.recordsToMask == null || req.recordsToMask.isEmpty()) {
                     res.isSuccess = false;
                     res.message = 'ERROR: The record collection is empty.';
+                } else if (String.isBlank(req.encryptedLogFieldName) || String.isBlank(req.statusCheckboxFieldName)) {
+                    res.isSuccess = false;
+                    res.message = 'ERROR: The log field and checkbox field names are required.';
                 } else {
+                    Schema.SObjectType firstType = req.recordsToMask[0].getSObjectType();
+                    Boolean mixedTypes = false;
                     Set<Id> ids = new Set<Id>();
-                    for (SObject s : req.recordsToMask) { if (s.Id != null) ids.add(s.Id); }
-                    if (ids.isEmpty()) {
+                    for (SObject s : req.recordsToMask) {
+                        if (s.getSObjectType() != firstType) mixedTypes = true;
+                        if (s.Id != null) ids.add(s.Id);
+                    }
+
+                    if (mixedTypes) {
+                        res.isSuccess = false;
+                        res.message = 'ERROR: All records must belong to the same object.';
+                    } else if (ids.isEmpty()) {
                         res.isSuccess = false;
                         res.message = 'ERROR: Provided records must have valid IDs.';
                     } else {
-                        String objectName = req.recordsToMask[0].getSObjectType().getDescribe().getName();
                         Id jobId = Database.executeBatch(new RSAMaskBatch(
-                            objectName, new List<Id>(ids),
+                            firstType.getDescribe().getName(), new List<Id>(ids),
                             resolveFieldNames(req.fieldNamesCollection),
                             req.encryptedLogFieldName.trim(),
                             req.statusCheckboxFieldName.trim()), 1);
@@ -52,18 +71,19 @@ public with sharing class FlowRSADataMaskingAction {
         return results;
     }
 
+    // Expands compound address names, trims, drops blanks and removes duplicates (case-insensitive)
     public static List<String> resolveFieldNames(List<String> fieldNames) {
         List<String> resolved = new List<String>();
         if (fieldNames == null) return resolved;
+
+        Set<String> seen = new Set<String>();
         for (String f : fieldNames) {
             if (String.isBlank(f)) continue;
-            String lower = f.trim().toLowerCase();
-            if (lower == 'mailingaddress') {
-                resolved.addAll(new List<String>{'MailingStreet','MailingCity','MailingState','MailingPostalCode','MailingCountry'});
-            } else if (lower == 'billingaddress') {
-                resolved.addAll(new List<String>{'BillingStreet','BillingCity','BillingState','BillingPostalCode','BillingCountry'});
-            } else {
-                resolved.add(f.trim());
+            String name = f.trim();
+            List<String> expanded = COMPOUND_ADDRESSES.get(name.toLowerCase());
+            List<String> toAdd = (expanded != null) ? expanded : new List<String>{name};
+            for (String n : toAdd) {
+                if (seen.add(n.toLowerCase())) resolved.add(n);
             }
         }
         return resolved;
