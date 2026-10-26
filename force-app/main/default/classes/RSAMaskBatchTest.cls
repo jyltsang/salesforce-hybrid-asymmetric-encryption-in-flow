@@ -54,7 +54,11 @@ private class RSAMaskBatchTest {
         System.assertEquals(false, after.DoNotCall, 'Required checkbox gets a valid placeholder');
         System.assertEquals(true, after.HasOptedOutOfEmail);
         System.assert(after.Description.contains('::'), 'Log should hold RSA key and AES cipher text');
-        System.assert(!after.Description.contains('smith'), 'Log must not hold plain text');
+        // Original values must not reach the log in plain text. The email and street contain
+        // '@' and spaces, which hex and base64 never produce, so these checks cannot pass by chance
+        System.assert(!after.Description.contains('Smith'), 'Log must not hold the plain last name');
+        System.assert(!after.Description.contains('john@example.com'), 'Log must not hold the plain email');
+        System.assert(!after.Description.contains('1 High Street'), 'Log must not hold the plain street');
     }
 
     @IsTest
