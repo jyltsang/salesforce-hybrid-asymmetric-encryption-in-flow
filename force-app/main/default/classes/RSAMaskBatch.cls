@@ -49,6 +49,7 @@ public with sharing class RSAMaskBatch implements Database.Batchable<Id> {
         BigInt exponent = new BigInt(cfgs[0].Exponent__c.trim(), 16);
 
         Schema.SObjectType sot = Schema.getGlobalDescribe().get(objectName);
+        if (sot == null) throw new RSAMaskException('Unknown object: ' + objectName);
         Map<String, Schema.SObjectField> fieldMap = sot.getDescribe().fields.getMap();
 
         // Build the masking plan once: field name -> replacement value (null means clear the field)
@@ -56,6 +57,15 @@ public with sharing class RSAMaskBatch implements Database.Batchable<Id> {
         Map<String, Object> maskValues = new Map<String, Object>();
         String encLower = encField.trim().toLowerCase();
         String statusLower = statusField.trim().toLowerCase();
+
+        // Guard the dynamic SOQL: the status name goes into the query, so it must be a real checkbox
+        if (!fieldMap.containsKey(statusLower)
+            || fieldMap.get(statusLower).getDescribe().getType() != Schema.DisplayType.BOOLEAN) {
+            throw new RSAMaskException('Status field \'' + statusField + '\' is not a checkbox on ' + objectName + '.');
+        }
+        if (!fieldMap.containsKey(encLower)) {
+            throw new RSAMaskException('Log field \'' + encField + '\' is not a field on ' + objectName + '.');
+        }
 
         if (targetFields != null) {
             for (String f : targetFields) {

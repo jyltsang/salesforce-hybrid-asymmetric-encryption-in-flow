@@ -90,6 +90,37 @@ private class FlowRSADataMaskingActionTest {
     }
 
     @IsTest
+    static void rejectsFieldValuesPassedInsteadOfApiNames() {
+        Contact c = new Contact(LastName = 'Smith');
+        insert c;
+
+        // Flow passed the checkbox value rather than its API name
+        FlowRSADataMaskingAction.MaskRequest valueAsStatus = req(new List<SObject>{c});
+        valueAsStatus.statusCheckboxFieldName = 'false';
+        FlowRSADataMaskingAction.MaskResult res = run(valueAsStatus)[0];
+        System.assertEquals(false, res.isSuccess);
+        System.assert(res.message.contains('Checkbox Field \'false\' is not a field on Contact'), res.message);
+
+        FlowRSADataMaskingAction.MaskRequest wrongStatusType = req(new List<SObject>{c});
+        wrongStatusType.statusCheckboxFieldName = 'Email';
+        res = run(wrongStatusType)[0];
+        System.assertEquals(false, res.isSuccess);
+        System.assert(res.message.contains('must be an editable checkbox'), res.message);
+
+        FlowRSADataMaskingAction.MaskRequest badLog = req(new List<SObject>{c});
+        badLog.encryptedLogFieldName = 'NoSuchField__c';
+        res = run(badLog)[0];
+        System.assertEquals(false, res.isSuccess);
+        System.assert(res.message.contains('Log Field \'NoSuchField__c\' is not a field on Contact'), res.message);
+
+        FlowRSADataMaskingAction.MaskRequest wrongLogType = req(new List<SObject>{c});
+        wrongLogType.encryptedLogFieldName = 'Birthdate';
+        res = run(wrongLogType)[0];
+        System.assertEquals(false, res.isSuccess);
+        System.assert(res.message.contains('must be an editable text area'), res.message);
+    }
+
+    @IsTest
     static void rejectsMixedObjectTypes() {
         Contact c = new Contact(LastName = 'Smith');
         Account a = new Account(Name = 'Acme');

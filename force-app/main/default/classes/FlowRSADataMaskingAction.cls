@@ -51,12 +51,18 @@ public with sharing class FlowRSADataMaskingAction {
                         if (s.Id != null) ids.add(s.Id);
                     }
 
+                    String fieldError = mixedTypes ? null : controlFieldError(
+                        firstType, req.encryptedLogFieldName, req.statusCheckboxFieldName);
+
                     if (mixedTypes) {
                         res.isSuccess = false;
                         res.message = 'ERROR: All records must belong to the same object.';
                     } else if (ids.isEmpty()) {
                         res.isSuccess = false;
                         res.message = 'ERROR: Provided records must have valid IDs.';
+                    } else if (fieldError != null) {
+                        res.isSuccess = false;
+                        res.message = 'ERROR: ' + fieldError;
                     } else {
                         Integer scopeSize = resolveBatchSize(req.batchSize);
                         Id jobId = Database.executeBatch(new RSAMaskBatch(
@@ -75,6 +81,35 @@ public with sharing class FlowRSADataMaskingAction {
             results.add(res);
         }
         return results;
+    }
+
+    // Checks the log and status inputs are field API names of the right type; null means they are valid.
+    // A common Flow mistake is passing a field's value (for example 'false') instead of its API name.
+    @TestVisible
+    private static String controlFieldError(Schema.SObjectType sot, String logField, String statusField) {
+        Schema.DescribeSObjectResult od = sot.getDescribe();
+        Map<String, Schema.SObjectField> fieldMap = od.fields.getMap();
+        String hint = ' Enter the field API name as plain text (for example Masked__c), not a field reference or value.';
+
+        Schema.SObjectField statusRef = fieldMap.get(statusField.trim().toLowerCase());
+        if (statusRef == null) {
+            return 'Checkbox Field \'' + statusField.trim() + '\' is not a field on ' + od.getName() + '.' + hint;
+        }
+        Schema.DescribeFieldResult sd = statusRef.getDescribe();
+        if (sd.getType() != Schema.DisplayType.BOOLEAN || !sd.isUpdateable()) {
+            return 'Checkbox Field ' + sd.getName() + ' must be an editable checkbox.';
+        }
+
+        Schema.SObjectField logRef = fieldMap.get(logField.trim().toLowerCase());
+        if (logRef == null) {
+            return 'Log Field \'' + logField.trim() + '\' is not a field on ' + od.getName() + '.' + hint;
+        }
+        Schema.DescribeFieldResult ld = logRef.getDescribe();
+        if ((ld.getType() != Schema.DisplayType.TEXTAREA && ld.getType() != Schema.DisplayType.STRING)
+            || !ld.isUpdateable()) {
+            return 'Log Field ' + ld.getName() + ' must be an editable text area (Text Area (Rich) or Long Text Area).';
+        }
+        return null;
     }
 
     // Blank means the default; anything outside 1 to 200 is clamped into range

@@ -82,6 +82,8 @@ Get the records, put the field API names into a text collection, then add the ac
 | Checkbox Field | API name of the status checkbox |
 | Batch Size | Optional, 1 to 200, default 1. Values outside the range are clamped. Smaller chunks give each record more CPU headroom |
 
+Type the **Log Field** and **Checkbox Field** values as plain text API names (for example `Masked__c`). Do not pick the field from the record variable: that passes the field's *value* (such as `false`), not its name. The action now rejects this with a clear error; earlier versions failed in the batch with `unexpected token: 'false'`.
+
 Call the action once per collection, not inside a loop.
 
 ### 6. How fields are masked
