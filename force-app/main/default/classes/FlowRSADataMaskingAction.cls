@@ -89,11 +89,11 @@ public with sharing class FlowRSADataMaskingAction {
     private static String controlFieldError(Schema.SObjectType sot, String logField, String statusField) {
         Schema.DescribeSObjectResult od = sot.getDescribe();
         Map<String, Schema.SObjectField> fieldMap = od.fields.getMap();
-        String hint = ' Enter the field API name as plain text (for example Masked__c), not a field reference or value.';
+        String apiNameTip = ' Enter the field API name as plain text (for example Masked__c), not a field reference or value.';
 
         Schema.SObjectField statusRef = fieldMap.get(statusField.trim().toLowerCase());
         if (statusRef == null) {
-            return 'Checkbox Field \'' + statusField.trim() + '\' is not a field on ' + od.getName() + '.' + hint;
+            return 'Checkbox Field \'' + statusField.trim() + '\' is not a field on ' + od.getName() + '.' + apiNameTip;
         }
         Schema.DescribeFieldResult sd = statusRef.getDescribe();
         if (sd.getType() != Schema.DisplayType.BOOLEAN || !sd.isUpdateable()) {
@@ -102,7 +102,7 @@ public with sharing class FlowRSADataMaskingAction {
 
         Schema.SObjectField logRef = fieldMap.get(logField.trim().toLowerCase());
         if (logRef == null) {
-            return 'Log Field \'' + logField.trim() + '\' is not a field on ' + od.getName() + '.' + hint;
+            return 'Log Field \'' + logField.trim() + '\' is not a field on ' + od.getName() + '.' + apiNameTip;
         }
         Schema.DescribeFieldResult ld = logRef.getDescribe();
         if ((ld.getType() != Schema.DisplayType.TEXTAREA && ld.getType() != Schema.DisplayType.STRING)
