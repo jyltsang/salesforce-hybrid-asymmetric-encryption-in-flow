@@ -113,6 +113,26 @@ private class RSAMaskBatchTest {
     }
 
     @IsTest
+    static void rejectsInvalidStatusOrLogFieldBeforeQuerying() {
+        useValidKey();
+        Contact c = new Contact(LastName = 'Smith');
+        insert c;
+        List<Id> scope = new List<Id>{c.Id};
+        Integer thrown = 0;
+
+        // 'false' used to reach the dynamic SOQL and fail with "unexpected token: 'false'"
+        try { new RSAMaskBatch('Contact', scope, fields(), LOG_FIELD, 'false').execute(null, scope); }
+        catch (RSAMaskBatch.RSAMaskException e) { thrown++; }
+        try { new RSAMaskBatch('Contact', scope, fields(), LOG_FIELD, 'Email').execute(null, scope); }
+        catch (RSAMaskBatch.RSAMaskException e) { thrown++; }
+        try { new RSAMaskBatch('Contact', scope, fields(), 'NoSuchField__c', FLAG_FIELD).execute(null, scope); }
+        catch (RSAMaskBatch.RSAMaskException e) { thrown++; }
+
+        System.assertEquals(3, thrown);
+        System.assertEquals('Smith', [SELECT LastName FROM Contact WHERE Id = :c.Id].LastName);
+    }
+
+    @IsTest
     static void failsWhenKeyMissingOrInvalid() {
         Contact c = makeContact(false);
         List<Id> scope = new List<Id>{c.Id};
