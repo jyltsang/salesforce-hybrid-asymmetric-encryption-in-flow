@@ -270,12 +270,6 @@ The metadata files added for the Custom Metadata type (`RSA_Key_Config__mdt` and
 
 When finished, delete the test Contact and `envelope.txt`; keep or destroy `private_key.pem` deliberately.
 
-## Demo
-
-A numbered script for a 3 to 5 minute screen recording is in [docs/demo-script.md](docs/demo-script.md).
-
-**Recording link:** _to be added (placeholder)_
-
 ## Security reporting
 
 Please report vulnerabilities by opening an issue in this repository's **Issues** tab with the title prefix `Security:`. The issue will be public, so:
