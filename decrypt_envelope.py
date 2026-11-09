@@ -27,7 +27,6 @@ def decrypt(envelope, pem_path, password=None):
     except OverflowError:
         sys.exit("Decryption failed: the envelope doesn't match this private key "
                  "(wrong key pair, or the Salesforce modulus/exponent is incorrect).")
-    aes_key = pow(int(rsa_hex, 16), d, n).to_bytes(32, "big")
 
     # 2. AES-256-CBC: managed IV = first 16 bytes, PKCS7 padding
     blob = base64.b64decode(b64)
