@@ -1,0 +1,11 @@
+{
+  "packageDirectories": [
+    {
+      "path": "force-app",
+      "default": true
+    }
+  ],
+  "name": "salesforce-hybrid-asymmetric-encryption-in-flow",
+  "namespace": "",
+  "sourceApiVersion": "66.0"
+}
